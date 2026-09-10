@@ -154,8 +154,8 @@ h1 em{font-style:normal;color:var(--blue)}
 .stickybar .btn{flex:1 1 auto}
 footer .mini{width:40px;height:40px;object-fit:contain;animation:bob3 4s ease-in-out infinite}
 /* replay: Daxly reacts in the corner of the demo frame */
-.react{position:absolute;right:14px;bottom:70px;width:84px;pointer-events:none;z-index:2;filter:drop-shadow(0 12px 16px rgba(11,18,32,.2))}
-.react img{position:absolute;inset:0;width:100%;height:auto;opacity:0;transform:translateY(10px) scale(.9);transition:opacity .35s var(--e-out),transform .35s var(--e-spring)}
+.react{position:absolute;right:16px;bottom:82px;width:78px;height:140px;pointer-events:none;z-index:2;filter:drop-shadow(0 12px 16px rgba(11,18,32,.2))}
+.react img{position:absolute;left:0;bottom:0;width:100%;height:100%;object-fit:contain;object-position:bottom;opacity:0;transform:translateY(10px) scale(.9);transition:opacity .35s var(--e-out),transform .35s var(--e-spring)}
 .react img.on{opacity:1;transform:none;animation:bob3 3.4s ease-in-out infinite}
 @media (max-width:767px){.react{display:none}}
 @media (min-width:768px){.ready{grid-template-columns:1fr 240px}.peek{width:120px}.hero3d{width:360px}}
@@ -688,6 +688,40 @@ footer .links{display:flex;gap:18px}
     swapMood(moodsBox, m);
     if (moodTags) Array.prototype.forEach.call(moodTags.children, function (t, i) { t.classList.toggle('on', ['ok', 'verified', 'warn'][i] === m); });
   }
+  function say(t) {
+    if (!sayText || sayText.textContent === t) return;
+    sayText.classList.add('fading');
+    setTimeout(function () { sayText.textContent = t; sayText.classList.remove('fading'); }, reduced ? 0 : 250);
+  }
+
+  /* ---- angle swap: subhead clause + preselected flow only ---- */
+  var ANGLES = {
+    site:     { clause: 'Describe the site you want.',              flow: 0 },
+    media:    { clause: 'Describe the video you want.',             flow: 1 },
+    evidence: { clause: 'Describe what you want in plain English.', flow: 2 },
+    fix:      { clause: 'Describe what is broken.',                 flow: 2 },
+    balance:  { clause: 'Describe what you want in plain English.', flow: 1 }
+  };
+  var params = new URLSearchParams(window.location.search);
+  var angle = ANGLES[(params.get('a') || '').toLowerCase()] || null;
+  if (angle) document.getElementById('subclause').textContent = angle.clause;
+
+  /* ---- count-up on the CTA number ---- */
+  var num = document.getElementById('num');
+  if (num && !reduced) {
+    var t0 = null;
+    num.textContent = '0';
+    setTimeout(function () {
+      function tick(ts) {
+        if (!t0) t0 = ts;
+        var k = Math.min(1, (ts - t0) / 900); k = 1 - Math.pow(1 - k, 3);
+        num.textContent = Math.round(5000 * k).toLocaleString('en-US');
+        if (k < 1) requestAnimationFrame(tick); else num.textContent = '5,000';
+      }
+      requestAnimationFrame(tick);
+    }, 750);
+  }
+
   /* small SVG avatars: eyes follow the pointer */
   if (!reduced && window.matchMedia('(hover:hover)').matches) {
     var avs = Array.prototype.slice.call(document.querySelectorAll('.mascot-sm, .wordmark svg'));
