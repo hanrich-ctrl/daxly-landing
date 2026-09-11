@@ -382,13 +382,39 @@ footer .links{display:flex;gap:18px}
   .hub-core{width:76px;height:76px;border-radius:20px}.hub-core img{width:56px;height:56px;border-radius:14px}
 }
 
-/* kinetic grid background: sits under everything, above the page ground */
-#kgrid{position:fixed;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;display:block}
 
 /* scroll tilt: the demo card leans back and settles flat as it scrolls into view */
 .tilt{perspective:1100px;perspective-origin:50% 0;position:relative;z-index:2}
 .tilt .frame{transform-origin:50% 0;will-change:transform;box-shadow:0 30px 60px -30px rgba(11,18,32,.35),0 80px 90px -60px rgba(0,102,255,.25);transition:box-shadow .3s}
 @media (prefers-reduced-motion:reduce){.tilt .frame{transform:none!important}}
+
+/* aurora background: drifting bands of blue light, masked to the top-right, fixed behind the page */
+#aurora{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+#aurora::before{
+  content:"";position:absolute;inset:-10px;opacity:.7;will-change:transform;
+  --white:#fff;--transparent:transparent;
+  --white-gradient:repeating-linear-gradient(100deg,var(--white) 0%,var(--white) 7%,var(--transparent) 10%,var(--transparent) 12%,var(--white) 16%);
+  --aurora:repeating-linear-gradient(100deg,#7FB0FF 10%,#C7D2FE 15%,#BFDBFE 20%,#E9E4FF 25%,#9CC3FF 30%);
+  background-image:var(--white-gradient),var(--aurora);
+  background-size:300%,200%;background-position:50% 50%,50% 50%;
+  filter:blur(14px);
+  -webkit-mask-image:radial-gradient(ellipse at 100% 0%,#000 10%,transparent 70%);
+  mask-image:radial-gradient(ellipse at 100% 0%,#000 10%,transparent 70%);
+}
+#aurora::after{
+  content:"";position:absolute;inset:-10px;opacity:.55;
+  --white:#fff;--transparent:transparent;
+  --white-gradient:repeating-linear-gradient(100deg,var(--white) 0%,var(--white) 7%,var(--transparent) 10%,var(--transparent) 12%,var(--white) 16%);
+  --aurora:repeating-linear-gradient(100deg,#7FB0FF 10%,#C7D2FE 15%,#BFDBFE 20%,#E9E4FF 25%,#9CC3FF 30%);
+  background-image:var(--white-gradient),var(--aurora);
+  background-size:200%,100%;background-position:50% 50%,50% 50%;
+  filter:blur(14px);mix-blend-mode:normal;
+  -webkit-mask-image:radial-gradient(ellipse at 100% 0%,#000 10%,transparent 70%);
+  mask-image:radial-gradient(ellipse at 100% 0%,#000 10%,transparent 70%);
+  animation:aurora 60s linear infinite;
+}
+@keyframes aurora{from{background-position:50% 50%,50% 50%}to{background-position:350% 50%,350% 50%}}
+@media (prefers-reduced-motion:reduce){#aurora::after{animation:none}}
 </style>
 </head>
 <body>
@@ -407,7 +433,7 @@ footer .links{display:flex;gap:18px}
   </defs>
 </svg>
 
-<canvas id="kgrid" aria-hidden="true"></canvas>
+<div id="aurora" aria-hidden="true"></div>
 <header class="hdr">
   <div class="wrap">
     <a class="wordmark" href="#top">Daxly</a>
@@ -968,75 +994,6 @@ footer .links{display:flex;gap:18px}
 })();
 </script>
 
-<script>
-/* Kinetic grid: a light grid that bends toward the pointer and ripples on click.
-   Ported from a React/canvas component; colours mapped to the Daxly palette. */
-(function(){
-  var canvas=document.getElementById('kgrid'); if(!canvas) return;
-  var ctx=canvas.getContext('2d'); if(!ctx) return;
-  var reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var CELL=55, INFLUENCE=260, MAX_WARP=24, DOT=28, LERP=0.08;
-  var LINE_BASE={r:11,g:18,b:32,a:0.075}, LINE_ACTIVE={r:0,g:102,b:255,a:0.85};
-  var NODE_BASE={r:11,g:18,b:32,a:0.16}, NODE_ACTIVE={r:0,g:102,b:255,a:1};
-  var GLOW='0,102,255', RIPPLE='0,102,255';
-  var NODE_R=1.6, NODE_R_ACTIVE=3.2;
-  var W=0,H=0,dpr=1, mouse={x:-9999,y:-9999}, target={x:-9999,y:-9999}, ripples=[], settled=false;
-  function lerp(a,b,t){return a+(b-a)*t}
-  function col(b,a,t){return 'rgba('+Math.round(lerp(b.r,a.r,t))+','+Math.round(lerp(b.g,a.g,t))+','+Math.round(lerp(b.b,a.b,t))+','+lerp(b.a,a.a,t).toFixed(3)+')'}
-  function size(){
-    W=window.innerWidth; H=window.innerHeight; dpr=Math.min(1.5,window.devicePixelRatio||1);
-    canvas.width=Math.round(W*dpr); canvas.height=Math.round(H*dpr);
-    canvas.style.width=W+'px'; canvas.style.height=H+'px';
-    ctx.setTransform(dpr,0,0,dpr,0,0); settled=false;
-  }
-  function warp(gx,gy,c,r,cols,rows){
-    var m=1.5, cp=Math.min(c/m,(cols-1-c)/m,1), rp=Math.min(r/m,(rows-1-r)/m,1), pin=cp*cp*rp*rp;
-    var dx=gx-mouse.x, dy=gy-mouse.y, dist=Math.sqrt(dx*dx+dy*dy);
-    var prox=Math.max(0,1-dist/INFLUENCE)*pin, rx=0, ry=0;
-    for(var i=0;i<ripples.length;i++){
-      var rp_=ripples[i], rdx=gx-rp_.x, rdy=gy-rp_.y, rd=Math.sqrt(rdx*rdx+rdy*rdy), ww=55, diff=rd-rp_.radius;
-      if(Math.abs(diff)<ww){ var st=(1-Math.abs(diff)/ww)*rp_.opacity*18*pin, an=Math.atan2(rdy,rdx), sg=diff<0?-1:1; rx-=Math.cos(an)*st*sg; ry-=Math.sin(an)*st*sg; }
-    }
-    if(dist<INFLUENCE&&dist>0&&pin>0){
-      var t=dist/INFLUENCE, eased=t<0.01?0:(1-t)*(1-t)*Math.min(1,dist/60), amt=eased*MAX_WARP*pin, ang=Math.atan2(dy,dx);
-      return {x:gx-Math.cos(ang)*amt+rx, y:gy-Math.sin(ang)*amt+ry, p:prox};
-    }
-    return {x:gx+rx, y:gy+ry, p:prox};
-  }
-  function draw(now){
-    ctx.clearRect(0,0,W,H);
-    ctx.fillStyle='rgba(11,18,32,0.05)';
-    for(var x=DOT/2;x<W;x+=DOT) for(var y=DOT/2;y<H;y+=DOT){ ctx.beginPath(); ctx.arc(x,y,0.7,0,Math.PI*2); ctx.fill(); }
-    for(var i=ripples.length-1;i>=0;i--){ var rp=ripples[i], age=(now-rp.born)/1000; rp.radius=Math.max(0,age*400); rp.opacity=Math.max(0,1-age*1.2); if(rp.opacity<=0) ripples.splice(i,1); }
-    var cols=Math.max(2,Math.ceil(W/CELL))+1, rows=Math.max(2,Math.ceil(H/CELL))+1, cw=W/(cols-1), ch=H/(rows-1);
-    var pts=[], r, c;
-    for(r=0;r<rows;r++){ pts[r]=[]; for(c=0;c<cols;c++) pts[r][c]=warp(c*cw,r*ch,c,r,cols,rows); }
-    function seg(a,b){ var avg=(a.p+b.p)/2, t=avg*avg*(3-2*avg); ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.strokeStyle=col(LINE_BASE,LINE_ACTIVE,t); ctx.lineWidth=lerp(0.8,1.5,t); ctx.stroke(); }
-    ctx.lineCap='butt';
-    for(r=0;r<rows;r++) for(c=0;c<cols-1;c++) seg(pts[r][c],pts[r][c+1]);
-    for(c=0;c<cols;c++) for(r=0;r<rows-1;r++) seg(pts[r][c],pts[r+1][c]);
-    for(r=0;r<rows;r++) for(c=0;c<cols;c++){
-      var p=pts[r][c], t=p.p*p.p*(3-2*p.p), rad=lerp(NODE_R,NODE_R_ACTIVE,t);
-      if(t>0.3){ var gr=rad+lerp(0,6,(t-0.3)/0.7), g=ctx.createRadialGradient(p.x,p.y,rad*0.5,p.x,p.y,gr); g.addColorStop(0,'rgba('+GLOW+','+(t*0.3).toFixed(3)+')'); g.addColorStop(1,'rgba('+GLOW+',0)'); ctx.beginPath(); ctx.arc(p.x,p.y,gr,0,Math.PI*2); ctx.fillStyle=g; ctx.fill(); }
-      ctx.beginPath(); ctx.arc(p.x,p.y,rad,0,Math.PI*2); ctx.fillStyle=col(NODE_BASE,NODE_ACTIVE,t); ctx.fill();
-    }
-    for(i=0;i<ripples.length;i++){ var q=ripples[i]; ctx.beginPath(); ctx.arc(q.x,q.y,Math.max(0,q.radius),0,Math.PI*2); ctx.strokeStyle='rgba('+RIPPLE+','+(q.opacity*0.28).toFixed(3)+')'; ctx.lineWidth=1.5; ctx.stroke(); }
-  }
-  function loop(now){
-    var ddx=target.x-mouse.x, ddy=target.y-mouse.y;
-    mouse.x=lerp(mouse.x,target.x,LERP); mouse.y=lerp(mouse.y,target.y,LERP);
-    var moving=Math.abs(ddx)>0.15||Math.abs(ddy)>0.15;
-    if(moving||ripples.length||!settled){ draw(now); settled=!moving&&!ripples.length; }
-    requestAnimationFrame(loop);
-  }
-  size(); window.addEventListener('resize',size);
-  if(reduced){ draw(performance.now()); return; }
-  window.addEventListener('pointermove',function(e){ target.x=e.clientX; target.y=e.clientY; },{passive:true});
-  window.addEventListener('pointerleave',function(){ target.x=-9999; target.y=-9999; });
-  window.addEventListener('pointerdown',function(e){ ripples.push({x:e.clientX,y:e.clientY,radius:0,opacity:1,born:performance.now()}); },{passive:true});
-  requestAnimationFrame(loop);
-})();
-</script>
 
 <script>
 /* Tilt-on-scroll for the hero demo card */
